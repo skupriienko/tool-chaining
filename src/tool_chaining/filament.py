@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import FilamentSlidingWindow, NodeStatus, SynTexFormatter, UniversalNode
+
+if TYPE_CHECKING:
+    from .mesh import UniversalToolMesh
 
 
 class UniversalFilamentThread:
@@ -14,17 +17,25 @@ class UniversalFilamentThread:
     def __init__(
         self,
         nodes: list[UniversalNode],
+        *,
         backward_levels: int = 1,
         forward_levels: int = 2,
         token_saving_ratio: float = 0.0,
         signal_callback: Callable[[str], None] | None = None,
+        mesh: UniversalToolMesh | None = None,
     ):
         self.nodes = list(nodes)
         self.backward_levels = max(0, backward_levels)
         self.forward_levels = max(0, forward_levels)
         self.token_saving_ratio = token_saving_ratio
         self.signal_callback = signal_callback
+        self.mesh = mesh
         self.telemetry_history: list[str] = []
+
+        if self.mesh:
+            for n in self.nodes:
+                if not n.branches:
+                    n.branches = self.mesh.get_branches(n.id)
 
     def step(self, current_index: int) -> tuple[FilamentSlidingWindow, str]:
         """Activate the node at current_index and emit a SYN-TEX telemetry signal."""

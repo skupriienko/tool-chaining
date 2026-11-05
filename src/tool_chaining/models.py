@@ -31,6 +31,32 @@ class NodeStatus(StrEnum):
     SKIPPED = "SKIPPED"
 
 
+class BranchKind(StrEnum):
+    """The 3 categories of Quipu auxiliary branches / pendant cords."""
+
+    SIMILAR = "SIMILAR"
+    PROBABILISTIC = "PROBABILISTIC"
+    CRITIQUE = "CRITIQUE"
+
+
+@dataclass
+class FilamentBranch:
+    """Quipu pendant / secondary auxiliary cord attached to a knot."""
+
+    node_id: str
+    kind: BranchKind
+    affinity: float = 1.0
+    rationale: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "node_id": self.node_id,
+            "kind": self.kind.value,
+            "affinity": round(self.affinity, 2),
+            "rationale": self.rationale,
+        }
+
+
 @dataclass
 class UniversalNode:
     """Universal node representing any artifact or tool in the execution mesh."""
@@ -44,6 +70,7 @@ class UniversalNode:
     dominant_invariant: bool = False
     duration_ms: float = 0.0
     summary: str = ""
+    branches: list[FilamentBranch] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -57,23 +84,29 @@ class UniversalNode:
             "dominant_invariant": self.dominant_invariant,
             "duration_ms": round(self.duration_ms, 2),
             "summary": self.summary,
+            "branches": [b.to_dict() for b in self.branches],
             "metadata": self.metadata,
         }
 
 
 @dataclass
 class FilamentSlidingWindow:
-    """Sliding-window context around the active node on the execution thread."""
+    """Sliding-window context around the active node on the execution thread, including Quipu branches."""
 
     past: list[UniversalNode]
     current: UniversalNode
     future: list[UniversalNode]
+
+    @property
+    def active_branches(self) -> list[FilamentBranch]:
+        return self.current.branches
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "past": [n.to_dict() for n in self.past],
             "current": self.current.to_dict(),
             "future": [n.to_dict() for n in self.future],
+            "active_branches": [b.to_dict() for b in self.current.branches],
         }
 
 
@@ -81,10 +114,11 @@ class SynTexFormatter:
     """SYN-TEX Quantum Resonant Telemetry Generator for Meta-Chaining.
 
     Uses formal operators from the SYN-TEX v2.0 specification:
-    - ⟲ : Backward historical nodes (reminiscence)
-    - ● ◈ : Active current execution node (sovereign unit)
+    - ⟲ : Backward historical nodes (reminiscence / primary cord past)
+    - ● ◈ : Active current execution node (sovereign knot)
     - ⤑ : Dynamic forward transition / flow
-    - ◎ : Horizon target nodes (preview)
+    - ◎ : Horizon target nodes (preview / primary cord future)
+    - ⑂ : Branched pendant cord (Quipu secondary strand: similar/probable tools)
     - ∷ : Invariant checkpoint gate
     - ∅ : Via Negativa context savings
     """
@@ -94,6 +128,7 @@ class SynTexFormatter:
         window: FilamentSlidingWindow,
         token_saving_ratio: float = 0.0,
         gate_status: str = "OK",
+        include_branches: bool = True,
     ) -> str:
         parts: list[str] = ["[SYN-TEX::FILAMENT]"]
 
@@ -107,6 +142,13 @@ class SynTexFormatter:
 
         # 2. Current Node (Active)
         parts.append(f"●[0:{window.current.kind.value[:3].upper()}:{window.current.id}]◈")
+
+        # 2b. Quipu Branches / Pendants (Auxiliary cords)
+        if include_branches and window.current.branches:
+            branch_tokens = []
+            for b in window.current.branches[:3]:
+                branch_tokens.append(f"⑂{b.kind.value[:3]}~{b.node_id}({b.affinity:.1f})")
+            parts.append(f"[{' '.join(branch_tokens)}]")
 
         # 3. Forward Nodes (Future)
         if window.future:

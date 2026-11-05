@@ -3,6 +3,8 @@
 from .filament import UniversalFilamentThread
 from .mesh import UniversalToolMesh
 from .models import (
+    BranchKind,
+    FilamentBranch,
     FilamentSlidingWindow,
     NodeKind,
     NodeStatus,
@@ -13,6 +15,8 @@ from .orchestrator import ToolChainOrchestrator
 
 __version__ = "1.0.0"
 __all__ = [
+    "BranchKind",
+    "FilamentBranch",
     "FilamentSlidingWindow",
     "NodeKind",
     "NodeStatus",

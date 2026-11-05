@@ -1,8 +1,17 @@
 """test_stress.py — Comprehensive Unit & Stress Test Suite for Meta-Tool Chaining."""
 
+import sys
 import time
+from pathlib import Path
 import pytest
+
+SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
 from tool_chaining import (
+    BranchKind,
+    FilamentBranch,
     FilamentSlidingWindow,
     NodeKind,
     NodeStatus,
@@ -78,3 +87,24 @@ def test_04_stress_throughput():
     elapsed = time.time() - t0
     assert elapsed < 1.5, f"Stress test took too long: {elapsed:.2f}s"
     print(f"\nExecuted 500 threads in {elapsed:.3f}s ({500 / elapsed:.1f} threads/sec)")
+
+
+def test_05_quipu_branched_filament():
+    """Verify Incan Quipu pendant cords (similar, critique, probabilistic) in tool-chaining."""
+    mesh = UniversalToolMesh()
+    mesh.add_edge("skill/scanner", "oracle/pytest", relation="CRITIQUES", weight=1.0)
+    mesh.add_edge("skill/scanner", "plugin/mcp-chain", relation="COMPLEMENTS", weight=0.95)
+
+    n_curr = UniversalNode("skill/scanner", NodeKind.SKILL, "Scanner", "Security scanner")
+    thread = UniversalFilamentThread([n_curr], backward_levels=1, forward_levels=1, mesh=mesh)
+
+    window, signal = thread.step(0)
+    assert len(window.active_branches) == 2
+    assert any(b.kind == BranchKind.CRITIQUE for b in window.active_branches)
+    assert any(b.kind == BranchKind.SIMILAR for b in window.active_branches)
+
+    assert "[SYN-TEX::FILAMENT]" in signal
+    assert "●[0:SKI:skill/scanner]◈" in signal
+    assert "⑂" in signal
+    assert "⑂CRI~oracle/pytest(1.0)" in signal
+    assert "⑂SIM~plugin/mcp-chain(0.9)" in signal

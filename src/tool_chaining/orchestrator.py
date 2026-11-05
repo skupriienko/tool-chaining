@@ -126,6 +126,7 @@ class ToolChainOrchestrator:
             forward_levels=forward_levels,
             token_saving_ratio=0.88,
             signal_callback=signal_callback,
+            mesh=self.mesh,
         )
 
         step_logs = []
