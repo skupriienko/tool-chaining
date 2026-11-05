@@ -108,3 +108,47 @@ def test_05_quipu_branched_filament():
     assert "⑂" in signal
     assert "⑂CRI~oracle/pytest(1.0)" in signal
     assert "⑂SIM~plugin/mcp-chain(0.9)" in signal
+
+
+def test_06_security_hardening():
+    """Verify input validation, cycle detection, XSS sanitization, and DoS guards."""
+    # 1. Null byte and invalid node rejection
+    with pytest.raises(ValueError):
+        UniversalNode("bad\0node", NodeKind.SKILL, "Bad", "Desc")
+
+    with pytest.raises(ValueError):
+        UniversalNode("node_1", NodeKind.SKILL, "Bad", "Desc", capability_weight=float("nan"))
+
+    with pytest.raises(ValueError):
+        UniversalNode("node_1", NodeKind.SKILL, "Bad", "Desc", capability_weight=float("inf"))
+
+    # 2. Cycle detection guard
+    mesh = UniversalToolMesh()
+    n1 = UniversalNode("step_a", NodeKind.SKILL, "A", "Step A")
+    n2 = UniversalNode("step_b", NodeKind.SKILL, "B", "Step B")
+    mesh.add_node(n1)
+    mesh.add_node(n2)
+    mesh.add_edge("step_a", "step_b")
+    assert not mesh.has_cycle()
+    mesh.add_edge("step_b", "step_a")
+    assert mesh.has_cycle()
+
+    # 3. Mermaid XSS / HTML sanitization
+    n_xss = UniversalNode("xss_node", NodeKind.DOC, '<script>alert("xss")</script>', "Desc")
+    mesh_xss = UniversalToolMesh()
+    mesh_xss.add_node(n_xss)
+    mermaid = mesh_xss.to_mermaid()
+    assert "<script>" not in mermaid
+    assert "&lt;script&gt;" in mermaid
+
+    # 4. SYN-TEX Delimiter Injection Prevention (CWE-117)
+    n_del = UniversalNode("evil\n[INJECTED] ∷ HACK", NodeKind.DOC, "Evil", "Desc")
+    thread = UniversalFilamentThread([n_del], backward_levels=1, forward_levels=1)
+    _, sig = thread.step(0)
+    assert "\n" not in sig
+    assert "[INJECTED]" not in sig
+
+    # 5. Query DoS limit
+    orch = ToolChainOrchestrator()
+    with pytest.raises(ValueError):
+        orch.execute_thread("Q" * 70000)

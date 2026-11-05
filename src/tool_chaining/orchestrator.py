@@ -108,7 +108,15 @@ class ToolChainOrchestrator:
         signal_callback: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         """Execute the universal filament thread with live SYN-TEX telemetry."""
+        if not isinstance(query, str):
+            raise TypeError("Security violation: query must be a string")
+        if len(query) > 65536:
+            raise ValueError("Security violation: query exceeds 65536 characters limit")
+
         nodes = plan if plan is not None else self.build_plan("investigation")
+        if not nodes:
+            raise ValueError("Execution plan must contain at least one node")
+
         start_time = time.time()
 
         # Capability Invariant Check (L_c <= L_d)
@@ -150,6 +158,16 @@ class ToolChainOrchestrator:
 
         total_elapsed = round(time.time() - start_time, 3)
 
+        synthesis_lines = [
+            "[META-TOOL CHAINING SYNTHESIS]",
+            f"Query: {query[:256]}",
+            f"Executed {len(nodes)} multi-class nodes cleanly across the filament thread.",
+            f"SYN-TEX Signals Emitted: {len(filament.telemetry_history)}",
+        ]
+        synthesis = "\n".join(synthesis_lines)
+        if len(synthesis) > MAX_HOOK_CEILING:
+            synthesis = synthesis[: MAX_HOOK_CEILING - 30] + "\n... [TRUNCATED_AT_8000]"
+
         return {
             "status": "SUCCESS",
             "query": query,
@@ -159,5 +177,5 @@ class ToolChainOrchestrator:
             "filament_telemetry": filament.telemetry_history,
             "filament_thread": filament.to_dict(),
             "latency_sec": total_elapsed,
-            "synthesis": f"[META-TOOL CHAINING SYNTHESIS]\nQuery: {query}\nExecuted {len(nodes)} multi-class nodes cleanly across the filament thread.\nSYN-TEX Signals Emitted: {len(filament.telemetry_history)}",
+            "synthesis": synthesis,
         }

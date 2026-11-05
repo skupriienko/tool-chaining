@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import html
+import math
+import re
 from typing import TYPE_CHECKING, Any
 
 from .models import BranchKind, FilamentBranch
 
 if TYPE_CHECKING:
     from .models import UniversalNode
+
+SAFE_ID_REGEX = re.compile(r"[^a-zA-Z0-9_]")
 
 
 class UniversalToolMesh:
@@ -18,6 +23,8 @@ class UniversalToolMesh:
         self.edges: list[dict[str, Any]] = []
 
     def add_node(self, node: UniversalNode) -> None:
+        if not node.id or len(node.id) > 128:
+            raise ValueError("Invalid node id")
         self.nodes[node.id] = node
 
     def add_edge(
@@ -28,15 +35,44 @@ class UniversalToolMesh:
         weight: float = 1.0,
         rationale: str = "",
     ) -> None:
+        if not source_id or not target_id:
+            raise ValueError("source_id and target_id must be non-empty")
+        if not math.isfinite(weight) or weight < 0.0 or weight > 100.0:
+            raise ValueError("Invalid weight: must be a finite float between 0.0 and 100.0")
+
+        clean_rel = SAFE_ID_REGEX.sub("", relation.upper()) or "PIPES_TO"
+        clean_rationale = "".join(ch for ch in rationale if ch >= " ")[:512]
+
         self.edges.append(
             {
                 "source": source_id,
                 "target": target_id,
-                "relation": relation,
+                "relation": clean_rel,
                 "weight": weight,
-                "rationale": rationale,
+                "rationale": clean_rationale,
             }
         )
+
+    def has_cycle(self) -> bool:
+        """Detect whether the directed mesh contains any cycles (infinite loop guard)."""
+        visited: dict[str, int] = {}  # 0: unvisited, 1: visiting, 2: visited
+
+        adj: dict[str, list[str]] = {nid: [] for nid in self.nodes}
+        for e in self.edges:
+            if e["source"] in adj:
+                adj[e["source"]].append(e["target"])
+
+        def dfs(u: str) -> bool:
+            visited[u] = 1
+            for v in adj.get(u, []):
+                if visited.get(v, 0) == 1:
+                    return True
+                if visited.get(v, 0) == 0 and dfs(v):
+                    return True
+            visited[u] = 2
+            return False
+
+        return any(visited.get(node_id, 0) == 0 and dfs(node_id) for node_id in self.nodes)
 
     def get_node(self, node_id: str) -> UniversalNode | None:
         return self.nodes.get(node_id)
@@ -131,13 +167,16 @@ class UniversalToolMesh:
         }
 
     def to_mermaid(self) -> str:
+        """Render dependency graph to Mermaid flowchart with full XSS and delimiter sanitization."""
         lines = ["```mermaid", "flowchart TD"]
         for n in self.nodes.values():
-            safe_id = n.id.replace("/", "_").replace("-", "_").replace(".", "_")
-            lines.append(f'    {safe_id}["[{n.kind.value.upper()}] {n.name}"]')
+            safe_id = SAFE_ID_REGEX.sub("_", n.id)
+            clean_name = html.escape(n.name, quote=True).replace("[", "&#91;").replace("]", "&#93;")
+            lines.append(f'    {safe_id}["[{n.kind.value.upper()}] {clean_name}"]')
         for e in self.edges:
-            s_id = e["source"].replace("/", "_").replace("-", "_").replace(".", "_")
-            t_id = e["target"].replace("/", "_").replace("-", "_").replace(".", "_")
-            lines.append(f"    {s_id} -->|{e['relation']}| {t_id}")
+            s_id = SAFE_ID_REGEX.sub("_", e["source"])
+            t_id = SAFE_ID_REGEX.sub("_", e["target"])
+            rel_label = html.escape(e["relation"], quote=True)
+            lines.append(f"    {s_id} -->|{rel_label}| {t_id}")
         lines.append("```")
         return "\n".join(lines)
